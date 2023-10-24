@@ -8,20 +8,25 @@ import json
 import csv
 import random
 from datetime import datetime
+import re
+
+# Function that removes all non alphanumeric characters from a string
+def normalize_string(string):
+    return re.sub(r'\W+', '', string).lower()
 
 class WhoScoredScraper:
     def __init__(self, headless=False):
         self.BASE_URL = "https://www.whoscored.com"
         self.DIR = "/LiveScores"
         self.DAYS = 3
-        self.LEAGUES = ['England-League-Two']
+        self.LEAGUES = ['League Two', 'Europe Champions League', 'Bundesliga', 'Premier League', 'La Liga', 'Serie A']
         self.HEADLESS = headless
 
         self.options = Options()
         if self.HEADLESS:
             self.options.add_argument("--headless")
 
-        self.options.add_argument("--window-size=1920,1200")
+        self.options.add_argument("--window-size=1366,768")
         self.driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=self.options)
 
     def run_crawl(self):
@@ -40,7 +45,10 @@ class WhoScoredScraper:
 
     def get_match_data(self, data):
         # Loop through Matches Data
+
+        match_data = {}
         for day, matches in data.items():
+            print("Day:", day, "Matches:", matches)
             for key, links in matches.items():
                 for index, link in enumerate(links):
                     # Go To Match Details
@@ -52,9 +60,7 @@ class WhoScoredScraper:
 
                     # Check if Match Has LiveStatistics Link And Go to That Link
                     if not page.select('a[href*="/LiveStatistics/"]'):
-                        # Delete The Match Record Which does not have LiveStatistics
-                        data[day][key].pop(index)
-                        print(link, " <== was Deleted")
+                        print(link, " <== was skipped")
                         continue  # Skip the rest of the loop for this match
 
                     # Check if the page contains the expected elements
@@ -95,7 +101,13 @@ class WhoScoredScraper:
                     home_team_players = self.get_players(home_team_table)
                     away_team_players = self.get_players(away_team_table)
                     # Generate Final Data Source
-                    data[day][key][index] = {
+
+                    if day not in match_data:
+                        match_data[day] = {}
+                    if key not in match_data[day]:
+                        match_data[day][key] = {}
+
+                    match_data[day][key][index] = {
                         match_name: {
                             home_team: {
                                 'Players': home_team_players,
@@ -109,8 +121,9 @@ class WhoScoredScraper:
                             }
                         }
                     }
+
         # Return Data Result
-        return data
+        return match_data
 
     def get_links(self, days=1):
         # Define Url
@@ -135,7 +148,7 @@ class WhoScoredScraper:
                 now = datetime.now()
                 # Convert the date to the desired format
                 match_day = now.strftime("%a, %b %d %Y")
-            # Put match_day as a Key of Links Data
+            # Put match_day as a Key of Links Data 
             data[match_day] = self.get_valid_links(Soup(self.driver.page_source, 'html.parser'))
 
             if i < days:
@@ -145,15 +158,19 @@ class WhoScoredScraper:
         return data
 
     def get_valid_links(self, page):
+        #print(page)
         # Sleep at least 5 Seconds
         time.sleep(random.randint(5, 10))
         result = {}
         # Get All The Links
-        links = list(map(lambda x: self.BASE_URL + x["href"], page.select('div[class *= "Match-module_scores"] a'))
-                     # Check Leagues
-                     for league in self.LEAGUES)
+
+        module_scores = page.select('div[class *= "Match-module_scores"] a')
+        links = list(map(lambda x: self.BASE_URL + x["href"], module_scores))
+
+
         for league in self.LEAGUES:
-            filtered_links = [link for link in links if league in link]
+            league = normalize_string(string=league)
+            filtered_links = [link for link in links if league in normalize_string(link)]
             if filtered_links:
                 result[league] = filtered_links
         return result
@@ -197,17 +214,15 @@ class WhoScoredScraper:
                                     # Append Data
                                     results.append([league, match_day, team, p[0], p[1], team_formation, team_link,
                                                     time.strftime("%x %r")])
-                        except:
+                        except Exception() as e:
+                            print(e)
                             continue
         return results
 
-    def save_json(self, data, json_file):
-        with open(json_file, mode='w', encoding='utf-8') as j_file:
-            json.dump(data, j_file)
 
     def save_data(self, data):
         with open('result.json', mode='w', encoding='utf-8') as j_file:
-            json.dump(data, j_file)
+            json.dump(data, j_file, ensure_ascii=False)
         results = self.convert_dict_to_list(data)
         headers = ['League', 'Match Day', 'Match Name', 'Team', 'Player Name', 'Player Link', 'Team Formation',
                    'Team Link', 'Timestamp']
