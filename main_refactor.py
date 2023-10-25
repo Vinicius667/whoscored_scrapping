@@ -9,6 +9,11 @@ import csv
 import random
 from datetime import datetime
 import re
+import pickle
+
+def save_as_pickle(variable, path):
+    with open(path, 'wb') as handle:
+        pickle.dump(variable, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 # Function that removes all non alphanumeric characters from a string
 def normalize_string(string):
@@ -18,8 +23,8 @@ class WhoScoredScraper:
     def __init__(self, headless=False):
         self.BASE_URL = "https://www.whoscored.com"
         self.DIR = "/LiveScores"
-        self.DAYS = 3
-        self.LEAGUES = ['League Two', 'Europe Champions League', 'Bundesliga', 'Premier League', 'La Liga', 'Serie A']
+        self.DAYS = 6
+        self.LEAGUES = ['League Two']#, 'Europe Champions League', 'Bundesliga', 'Premier League', 'La Liga', 'Serie A']
         self.HEADLESS = headless
 
         self.options = Options()
@@ -35,6 +40,7 @@ class WhoScoredScraper:
         quarter = time.time()
         print("Collecting All The links Took:", quarter - start, "Seconds")
         data = self.get_match_data(links)
+        save_as_pickle(data, "./data.pkl")
         almost = time.time()
         print("Grabbing Matches Data Took:", almost - quarter, "Seconds")
         self.save_data(data)
@@ -50,7 +56,8 @@ class WhoScoredScraper:
         for day, matches in data.items():
             print("Day:", day, "Matches:", matches)
             for key, links in matches.items():
-                for index, link in enumerate(links):
+                index = 0
+                for link in links:
                     # Go To Match Details
                     self.driver.get(link)
                     # Wait For Page Refresh
@@ -121,6 +128,7 @@ class WhoScoredScraper:
                             }
                         }
                     }
+                    index += 1
 
         # Return Data Result
         return match_data
